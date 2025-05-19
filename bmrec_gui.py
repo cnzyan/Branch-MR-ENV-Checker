@@ -798,8 +798,8 @@ def check_port_available(port):
     return result
 if __name__ == "__main__":
 
-    locker_file=None
-    run_2nd=False
+    locker_file=None #锁文件
+    run_2nd=False #重复执行检测标志
     try:
         locker_file= open(LOCK_FILE,'a')
         portalocker.lock(locker_file, portalocker.LOCK_EX | portalocker.LOCK_NB)
