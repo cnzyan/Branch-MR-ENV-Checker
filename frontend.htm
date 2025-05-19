@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>设备监控中心</title>
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #333333;
+            --th-bg-color: #f2f2f2;
+            --border-color: #dddddd;
+            --button-bg: #f0f0f0;
+            --button-hover: #e0e0e0;
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --text-color: #e0e0e0;
+            --th-bg-color: #2d2d2d;
+            --border-color: #404040;
+            --button-bg: #333333;
+            --button-hover: #444444;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        th, td {
+            border: 1px solid var(--border-color);
+            padding: 12px;
+            text-align: left;
+        }
+
+        th {
+            background-color: var(--th-bg-color);
+        }
+
+        .normal { color: #4CAF50; }
+        .abnormal { color: #ff0000; }
+        .status { font-weight: bold; }
+
+        #updateTime {
+            color: var(--text-color);
+            margin: 10px 0;
+            font-size: 0.9em;
+        }
+
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 8px 16px;
+            background-color: var(--button-bg);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .theme-toggle:hover {
+            background-color: var(--button-hover);
+        }
+    </style>
+</head>
+<body>
+    <button class="theme-toggle" onclick="toggleTheme()">切换深色主题</button>
+    <h2>外围机房设备监控状态表</h2>
+    <div id="updateTime">最后更新时间：--</div>
+    <table>
+        <thead>
+            <tr>
+                <th>位置</th>
+                <th>在线状态</th>
+                <th>功率(kW)</th>
+                <th>电压(V)</th>
+                <th>电流(A)</th>
+                <th>温度</th>
+                <th>湿度</th>
+                <th colspan="2">UPS状态</th>
+                <th>空调状态</th>
+                <th>水浸状态</th>
+            </tr>
+        </thead>
+        <tbody id="dataBody"></tbody>
+    </table>
+
+    <script>
+        let currentCallbackId = 0;
+
+        // 主题管理
+        function toggleTheme() {
+            const body = document.body;
+            const isDark = body.getAttribute('data-theme') === 'dark';
+            body.setAttribute('data-theme', isDark ? '' : 'dark');
+            localStorage.setItem('theme', isDark ? 'light' : 'dark');
+            document.querySelector('.theme-toggle').textContent = 
+                isDark ? '切换深色主题' : '切换浅色主题';
+        }
+
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.body.setAttribute('data-theme', savedTheme === 'dark' ? 'dark' : '');
+            document.querySelector('.theme-toggle').textContent = 
+                savedTheme === 'dark' ? '切换浅色主题' : '切换深色主题';
+        }
+
+        // 数据获取
+        function fetchData() {
+            const callbackName = `jsonpCallback_${Date.now()}_${currentCallbackId++}`;
+            const script = document.createElement('script');
+            
+            script.src = `http://10.141.46.86:5000/dev_list?callback=${callbackName}`;
+            
+            window[callbackName] = function(data) {
+                updateTable(data);
+                document.getElementById('updateTime').textContent = 
+                    `最后更新时间：${new Date().toLocaleTimeString()}`;
+                cleanupScript(script, callbackName);
+            };
+
+            script.onerror = function() {
+                console.error('数据请求失败');
+                cleanupScript(script, callbackName);
+            };
+
+            setTimeout(() => {
+                if (window[callbackName]) {
+                    console.warn('请求超时');
+                    cleanupScript(script, callbackName);
+                }
+            }, 5000);
+
+            document.body.appendChild(script);
+        }
+
+        function cleanupScript(script, callbackName) {
+            document.body.removeChild(script);
+            delete window[callbackName];
+        }
+
+        // 表格更新
+        function updateTable(data) {
+            const tbody = document.getElementById('dataBody');
+            tbody.innerHTML = '';
+
+            data.servers.forEach(server => {
+
+
+                const row = document.createElement('tr');
+                //console.log(alarming);
+                var cells=[];
+                // 各列数据
+                if (server.online === "true"){
+                    var alarming=0;
+                    if ((server.alarm.numHl).toString().indexOf('<label class=\"redAlm\">0<\/label><img src=\"\/public\/images\/ylwAlm.png\"><label class=\"ylwAlm\">0<\/label>')>0){
+                        alarming=0;
+                    }else{
+                        alarming=1;
+                    }
+                    if (alarming==1){
+                        cells = [
+                            createCell(server.addr),
+                            createCell("告警"),
+                            createCell(`${server.power.kw} / ${server.power.kva}`),
+                            createCell(server.power.volt_Ph),
+                            createCell(server.power.curr_Ph),
+                            createCell(server.temp),
+                            createCell(server.humi),
+                            createStatusCell(server.ups.intAlm, "正常"),
+                            createCell(server.ups.oPVolt+"V\n"+server.ups.oPCurr+"A"),
+                            createStatusCell(
+                                server.ac.sts.cooling.includes("停止") ? "关机" : "运行", 
+                                "运行"
+                            ),
+                            createStatusCell(server.leak, "正常")
+                        ];
+                    }else{
+                        cells = [
+                            createCell(server.addr),
+                            createStatusCell(server.online === "true" ? "在线" : "离线", "在线"),
+                            createCell(`${server.power.kw} / ${server.power.kva}`),
+                            createCell(server.power.volt_Ph),
+                            createCell(server.power.curr_Ph),
+                            createCell(server.temp),
+                            createCell(server.humi),
+                            createStatusCell(server.ups.intAlm, "正常"),
+                            createCell(server.ups.oPVolt+"V\n"+server.ups.oPCurr+"A"),
+                            createStatusCell(
+                                server.ac.sts.cooling.includes("停止") ? "关机" : "运行", 
+                                "运行"
+                            ),
+                            createStatusCell(server.leak, "正常")
+                        ];
+                    }
+
+
+                }else{
+                    cells = [
+                        createCell(server.addr),
+                        createStatusCell(server.online === "true" ? "在线" : "离线", "在线")
+                    ];
+                }
+
+
+                cells.forEach(cell => row.appendChild(cell));
+                tbody.appendChild(row);
+            });
+        }
+
+        function createCell(text) {
+            const td = document.createElement('td');
+            td.textContent = text;
+            return td;
+        }
+
+        function createStatusCell(value, normalText) {
+            const td = document.createElement('td');
+            td.classList.add('status');
+            td.textContent = value;
+            td.className += value === normalText ? ' normal' : ' abnormal';
+            return td;
+        }
+
+        // 初始化
+        window.onload = function() {
+            initTheme();
+            fetchData();
+            setInterval(fetchData, 60000);
+        }
+    </script>
+</body>
+</html>

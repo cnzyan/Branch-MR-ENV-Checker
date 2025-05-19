@@ -1,0 +1,13 @@
+setup.ini
+backup/
+sample/
+output_sample.txt
+logs/
+__pycache__
+*.rar
+build/
+dist/
+*.spec
+*.tmp
+*bak*
+.venv/
